@@ -44,7 +44,7 @@ def main():
     batch_size = 8  # 每次预测时将多少张图片打包成一个batch
     with torch.no_grad():
         for ids in range(0, len(img_path_list) // batch_size):
-            img_list = []
+            img_list = []  #保存所有的图片
             for img_path in img_path_list[ids * batch_size: (ids + 1) * batch_size]:
                 assert os.path.exists(img_path), f"file: '{img_path}' dose not exist."
                 img = Image.open(img_path)
@@ -57,7 +57,7 @@ def main():
             # predict class
             output = model(batch_img.to(device)).cpu()
             predict = torch.softmax(output, dim=1)
-            probs, classes = torch.max(predict, dim=1)
+            probs, classes = torch.max(predict, dim=1)  #返回最大值和index
 
             for idx, (pro, cla) in enumerate(zip(probs, classes)):
                 print("image: {}  class: {}  prob: {:.3}".format(img_path_list[ids * batch_size + idx],

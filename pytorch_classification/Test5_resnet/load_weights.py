@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from model import resnet34
 
-
+#关于加载权重的一些说明，主函数不涉及/删除也行
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

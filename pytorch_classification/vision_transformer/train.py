@@ -17,10 +17,10 @@ from utils import read_split_data, train_one_epoch, evaluate
 def main(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    if os.path.exists("./weights") is False:
+    if os.path.exists("./weights") is False:  #用来存训练出来的权重的文件夹
         os.makedirs("./weights")
 
-    tb_writer = SummaryWriter()
+    tb_writer = SummaryWriter()   #TF看板
 
     train_images_path, train_images_label, val_images_path, val_images_label = read_split_data(args.data_path)
 
@@ -34,7 +34,7 @@ def main(args):
                                    transforms.ToTensor(),
                                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])}
 
-    # 实例化训练数据集
+    # 实例化训练数据集。只是实例化，没有执行MyDataSet内部的函数（除了__init__）。一个可以被用来返回一个一个样本的东西。
     train_dataset = MyDataSet(images_path=train_images_path,
                               images_class=train_images_label,
                               transform=data_transform["train"])
@@ -50,7 +50,7 @@ def main(args):
     train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size=batch_size,
                                                shuffle=True,
-                                               pin_memory=True,
+                                               pin_memory=True,  #类似于先一步把数据放到GPU的备选区域，这样GPU训练时候更快更方便
                                                num_workers=nw,
                                                collate_fn=train_dataset.collate_fn)
 
@@ -74,18 +74,18 @@ def main(args):
         print(model.load_state_dict(weights_dict, strict=False))
 
     if args.freeze_layers:
-        for name, para in model.named_parameters():
+        for name, para in model.named_parameters():  #named_parameters是一个内置函数
             # 除head, pre_logits外，其他权重全部冻结
             if "head" not in name and "pre_logits" not in name:
                 para.requires_grad_(False)
             else:
                 print("training {}".format(name))
 
-    pg = [p for p in model.parameters() if p.requires_grad]
+    pg = [p for p in model.parameters() if p.requires_grad]  #参与更新的权重
     optimizer = optim.SGD(pg, lr=args.lr, momentum=0.9, weight_decay=5E-5)
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
     lf = lambda x: ((1 + math.cos(x * math.pi / args.epochs)) / 2) * (1 - args.lrf) + args.lrf  # cosine
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  #把学习率乘以lf
 
     for epoch in range(args.epochs):
         # train
@@ -95,7 +95,7 @@ def main(args):
                                                 device=device,
                                                 epoch=epoch)
 
-        scheduler.step()
+        scheduler.step()  #scheduler和optimizer内有联系，初始化时候optimizer传进去了。它更新优化器的学习率。
 
         # validate
         val_loss, val_acc = evaluate(model=model,
@@ -103,12 +103,12 @@ def main(args):
                                      device=device,
                                      epoch=epoch)
 
-        tags = ["train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"]
+        tags = ["train_loss", "train_acc", "val_loss", "val_acc", "learning_rate"]  #看板
         tb_writer.add_scalar(tags[0], train_loss, epoch)
         tb_writer.add_scalar(tags[1], train_acc, epoch)
         tb_writer.add_scalar(tags[2], val_loss, epoch)
         tb_writer.add_scalar(tags[3], val_acc, epoch)
-        tb_writer.add_scalar(tags[4], optimizer.param_groups[0]["lr"], epoch)
+        tb_writer.add_scalar(tags[4], optimizer.param_groups[0]["lr"], epoch)  #[0]：绝大部分模型只有一组。这里是实际的学习率。
 
         torch.save(model.state_dict(), "./weights/model-{}.pth".format(epoch))
 

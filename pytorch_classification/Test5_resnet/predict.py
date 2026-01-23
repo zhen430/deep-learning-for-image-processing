@@ -47,9 +47,9 @@ def main():
     model.eval()
     with torch.no_grad():
         # predict class
-        output = torch.squeeze(model(img.to(device))).cpu()
-        predict = torch.softmax(output, dim=0)
-        predict_cla = torch.argmax(predict).numpy()
+        output = torch.squeeze(model(img.to(device))).cpu()   #去掉batch==1的维度
+        predict = torch.softmax(output, dim=0)  #因为要计算概率，所以用softmax而不是简单的max了。
+        predict_cla = torch.argmax(predict).numpy()   #返回最大值的index
 
     print_res = "class: {}   prob: {:.3}".format(class_indict[str(predict_cla)],
                                                  predict[predict_cla].numpy())

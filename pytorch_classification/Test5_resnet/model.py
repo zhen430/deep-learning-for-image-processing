@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 
 
-class BasicBlock(nn.Module):
+class BasicBlock(nn.Module):    #一个resnet模块
     expansion = 1
 
     def __init__(self, in_channel, out_channel, stride=1, downsample=None, **kwargs):
@@ -13,12 +13,12 @@ class BasicBlock(nn.Module):
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(in_channels=out_channel, out_channels=out_channel,
                                kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channel)
+        self.bn2 = nn.BatchNorm2d(out_channel)  #两个bn要区分开因为参数should be不同
         self.downsample = downsample
 
     def forward(self, x):
         identity = x
-        if self.downsample is not None:
+        if self.downsample is not None:   #跳跃连接
             identity = self.downsample(x)
 
         out = self.conv1(x)
@@ -34,7 +34,7 @@ class BasicBlock(nn.Module):
         return out
 
 
-class Bottleneck(nn.Module):
+class Bottleneck(nn.Module):  #一种改良结构，用了分组卷积，不用细抠
     """
     注意：原论文中，在虚线残差结构的主分支上，第一个1x1卷积层的步距是2，第二个3x3卷积层步距是1。
     但在pytorch官方实现过程中是第一个1x1卷积层的步距是1，第二个3x3卷积层步距是2，
@@ -106,11 +106,11 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(self.in_channel)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, blocks_num[0])
+        self.layer1 = self._make_layer(block, 64, blocks_num[0])   #多个模块串联，组成一个stage
         self.layer2 = self._make_layer(block, 128, blocks_num[1], stride=2)
         self.layer3 = self._make_layer(block, 256, blocks_num[2], stride=2)
         self.layer4 = self._make_layer(block, 512, blocks_num[3], stride=2)
-        if self.include_top:
+        if self.include_top:  #分类头
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))  # output size = (1, 1)
             self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -118,15 +118,15 @@ class ResNet(nn.Module):
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
 
-    def _make_layer(self, block, channel, block_num, stride=1):
+    def _make_layer(self, block, channel, block_num, stride=1):  #串联多个模块
         downsample = None
-        if stride != 1 or self.in_channel != channel * block.expansion:
+        if stride != 1 or self.in_channel != channel * block.expansion:  #用1*1卷积代替池化
             downsample = nn.Sequential(
                 nn.Conv2d(self.in_channel, channel * block.expansion, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(channel * block.expansion))
 
         layers = []
-        layers.append(block(self.in_channel,
+        layers.append(block(self.in_channel,   #首个模块
                             channel,
                             downsample=downsample,
                             stride=stride,
@@ -134,7 +134,7 @@ class ResNet(nn.Module):
                             width_per_group=self.width_per_group))
         self.in_channel = channel * block.expansion
 
-        for _ in range(1, block_num):
+        for _ in range(1, block_num):  #其余模块
             layers.append(block(self.in_channel,
                                 channel,
                                 groups=self.groups,

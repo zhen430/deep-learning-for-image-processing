@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 
-def drop_path(x, drop_prob: float = 0., training: bool = False):
+def drop_path(x, drop_prob: float = 0., training: bool = False):  #一种特殊的drop方法，形状不变
     """
     Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
     This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
@@ -22,6 +22,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
         return x
     keep_prob = 1 - drop_prob
     shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    #(B, 1, 1, 1)
     random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
     random_tensor.floor_()  # binarize
     output = x.div(keep_prob) * random_tensor
@@ -50,19 +51,21 @@ class PatchEmbed(nn.Module):
         patch_size = (patch_size, patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
+        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])  # 14，14
+        self.num_patches = self.grid_size[0] * self.grid_size[1]  # 196个patch
 
         self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+          #nn.Identity()是啥也不干。norm_layer是为了预留外部传入的接口。
 
     def forward(self, x):
         B, C, H, W = x.shape
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        # flatten: [B, C, H, W] -> [B, C, HW]
-        # transpose: [B, C, HW] -> [B, HW, C]
+        #卷积：【B, 3, 224，224】 -> 【B，768，14，14】
+        # flatten: [B, 768, 14, 14] -> [B, 768, 196]
+        # transpose: [B, 768, 196] -> [B, 196, 768]
         x = self.proj(x).flatten(2).transpose(1, 2)
         x = self.norm(x)
         return x
@@ -82,7 +85,7 @@ class Attention(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop_ratio)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(dim, dim)  #融合多头那个线性层
         self.proj_drop = nn.Dropout(proj_drop_ratio)
 
     def forward(self, x):
@@ -100,14 +103,14 @@ class Attention(nn.Module):
         # @: multiply -> [batch_size, num_heads, num_patches + 1, num_patches + 1]
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        attn = self.attn_drop(attn)  #注意！
 
         # @: multiply -> [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
         # transpose: -> [batch_size, num_patches + 1, num_heads, embed_dim_per_head]
         # reshape: -> [batch_size, num_patches + 1, total_embed_dim]
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop(x)  #注意！
         return x
 
 
@@ -128,12 +131,12 @@ class Mlp(nn.Module):
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)
-        x = self.fc2(x)
+        x = self.fc2(x)  #第二层没有激活函数
         x = self.drop(x)
         return x
 
 
-class Block(nn.Module):
+class Block(nn.Module):  #一个变形金刚模块
     def __init__(self,
                  dim,
                  num_heads,
@@ -189,21 +192,23 @@ class VisionTransformer(nn.Module):
         """
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
-        self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
-        self.num_tokens = 2 if distilled else 1
+        self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models，768
+        self.num_tokens = 2 if distilled else 1  #类别token个数，按普通情况1来看
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
+        #如果调用者没有传入自定义的 norm_layer，就默认使用 nn.LayerNorm，并且把 eps 固定成 1e-6
         act_layer = act_layer or nn.GELU
 
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_c=in_c, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
+        num_patches = self.patch_embed.num_patches  #196
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.dist_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if distilled else None
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))  #nn.Parameter建立一个可训练的参数【1，1，768】
+        self.dist_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if distilled else None  #进阶模型，忽略
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))  #【1，196+1，768】
         self.pos_drop = nn.Dropout(p=drop_ratio)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_ratio, depth)]  # stochastic depth decay rule
-        self.blocks = nn.Sequential(*[
+        #从0增加到drop_path_ratio，depth个数字（层数）
+        self.blocks = nn.Sequential(*[   #一系列transformer模块，12个
             Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                   drop_ratio=drop_ratio, attn_drop_ratio=attn_drop_ratio, drop_path_ratio=dpr[i],
                   norm_layer=norm_layer, act_layer=act_layer)
@@ -211,7 +216,7 @@ class VisionTransformer(nn.Module):
         ])
         self.norm = norm_layer(embed_dim)
 
-        # Representation layer
+        # Representation layer，进阶模型才有，就是末尾又加了一个线性层映射到representation_size，之后再分类头
         if representation_size and not distilled:
             self.has_logits = True
             self.num_features = representation_size
@@ -230,12 +235,12 @@ class VisionTransformer(nn.Module):
             self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
         # Weight init
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)  #给self.pos_embed用trunc_normal_初始化
         if self.dist_token is not None:
             nn.init.trunc_normal_(self.dist_token, std=0.02)
 
         nn.init.trunc_normal_(self.cls_token, std=0.02)
-        self.apply(_init_vit_weights)
+        self.apply(_init_vit_weights)  #内置函数，遍历所有层，给它们用_init_vit_weights
 
     def forward_features(self, x):
         # [B, C, H, W] -> [B, num_patches, embed_dim]
@@ -243,21 +248,21 @@ class VisionTransformer(nn.Module):
         # [1, 1, 768] -> [B, 1, 768]
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)
         if self.dist_token is None:
-            x = torch.cat((cls_token, x), dim=1)  # [B, 197, 768]
-        else:
+            x = torch.cat((cls_token, x), dim=1)  # [B, 197, 768]，合并图片和类别
+        else:  #进阶，忽略
             x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
 
-        x = self.pos_drop(x + self.pos_embed)
-        x = self.blocks(x)
-        x = self.norm(x)
+        x = self.pos_drop(x + self.pos_embed)  #加上位置编码[B, 197, 768]
+        x = self.blocks(x)  #经过一系列变形金刚
+        x = self.norm(x)  #LN
         if self.dist_token is None:
-            return self.pre_logits(x[:, 0])
+            return self.pre_logits(x[:, 0])  #等价于 x[:, 0, :]，取类别token【B，768】
         else:
             return x[:, 0], x[:, 1]
 
     def forward(self, x):
-        x = self.forward_features(x)
-        if self.head_dist is not None:
+        x = self.forward_features(x)  #【B，768】
+        if self.head_dist is not None:  #忽略
             x, x_dist = self.head(x[0]), self.head_dist(x[1])
             if self.training and not torch.jit.is_scripting():
                 # during inference, return the average of both classifier predictions
@@ -265,11 +270,11 @@ class VisionTransformer(nn.Module):
             else:
                 return (x + x_dist) / 2
         else:
-            x = self.head(x)
+            x = self.head(x)  #【B，768】->【B，5】
         return x
 
 
-def _init_vit_weights(m):
+def _init_vit_weights(m):  #线性层，卷积层，LN用不同的初始化方法
     """
     ViT weight initialization
     :param m: module

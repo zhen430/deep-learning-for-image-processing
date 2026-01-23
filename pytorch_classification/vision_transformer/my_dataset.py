@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-class MyDataSet(Dataset):
+class MyDataSet(Dataset):  #和官方实现功能上没区别，可能只是为了演示
     """自定义数据集"""
 
     def __init__(self, images_path: list, images_class: list, transform=None):

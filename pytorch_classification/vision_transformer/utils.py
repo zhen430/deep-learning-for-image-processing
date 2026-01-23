@@ -19,10 +19,10 @@ def read_split_data(root: str, val_rate: float = 0.2):
     # 排序，保证各平台顺序一致
     flower_class.sort()
     # 生成类别名称以及对应的数字索引
-    class_indices = dict((k, v) for v, k in enumerate(flower_class))
+    class_indices = dict((k, v) for v, k in enumerate(flower_class))  #文字在前
     json_str = json.dumps(dict((val, key) for key, val in class_indices.items()), indent=4)
     with open('class_indices.json', 'w') as json_file:
-        json_file.write(json_str)
+        json_file.write(json_str)    #数字在前
 
     train_images_path = []  # 存储训练集的所有图片路径
     train_images_label = []  # 存储训练集图片对应索引信息
@@ -122,35 +122,36 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch):
     accu_num = torch.zeros(1).to(device)   # 累计预测正确的样本数
     optimizer.zero_grad()
 
-    sample_num = 0
+    sample_num = 0   #图片数量
     data_loader = tqdm(data_loader, file=sys.stdout)
     for step, data in enumerate(data_loader):
         images, labels = data
         sample_num += images.shape[0]
 
-        pred = model(images.to(device))
-        pred_classes = torch.max(pred, dim=1)[1]
+        pred = model(images.to(device))  #5维度的logits
+        pred_classes = torch.max(pred, dim=1)[1]  #类别的index
         accu_num += torch.eq(pred_classes, labels.to(device)).sum()
 
         loss = loss_function(pred, labels.to(device))
         loss.backward()
-        accu_loss += loss.detach()
+        accu_loss += loss.detach()   #detach是从计算图里拿出来，不反向传播
 
+        #每个step打印一次（进度条）
         data_loader.desc = "[train epoch {}] loss: {:.3f}, acc: {:.3f}".format(epoch,
                                                                                accu_loss.item() / (step + 1),
                                                                                accu_num.item() / sample_num)
 
-        if not torch.isfinite(loss):
+        if not torch.isfinite(loss):  #loss炸了
             print('WARNING: non-finite loss, ending training ', loss)
             sys.exit(1)
 
         optimizer.step()
         optimizer.zero_grad()
 
-    return accu_loss.item() / (step + 1), accu_num.item() / sample_num
+    return accu_loss.item() / (step + 1), accu_num.item() / sample_num   #平均的
 
 
-@torch.no_grad()
+@torch.no_grad()   #等价于with torch.no_grad()
 def evaluate(model, data_loader, device, epoch):
     loss_function = torch.nn.CrossEntropyLoss()
 
