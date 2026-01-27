@@ -9,7 +9,7 @@ from torchvision import transforms
 from my_dataset import MyDataSet
 from model import swin_tiny_patch4_window7_224 as create_model
 from utils import read_split_data, train_one_epoch, evaluate
-
+import wandb
 
 def main(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -18,6 +18,21 @@ def main(args):
         os.makedirs("./weights")
 
     tb_writer = SummaryWriter()
+
+    run = wandb.init(
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="liu2000-kth",
+        # Set the wandb project where this run will be logged.
+        project="prac_202601_wb",
+        # Track hyperparameters and run metadata.
+        config={
+            "learning_rate": args.lr,
+            "architecture": "swinT",
+            "dataset": "Flower-5",
+            "epochs": args.epochs,
+        },
+        notes='看model.py110行能不能改',
+    )
 
     train_images_path, train_images_label, val_images_path, val_images_label = read_split_data(args.data_path)
 
@@ -63,7 +78,15 @@ def main(args):
 
     if args.weights != "":
         assert os.path.exists(args.weights), "weights file: '{}' not exist.".format(args.weights)
-        weights_dict = torch.load(args.weights, map_location=device)["model"]
+        checkpoint = torch.load(args.weights, map_location=device)
+        if isinstance(checkpoint, dict):
+            print("Keys:", checkpoint.keys())
+            # 看到 ['model', 'optimizer', 'epoch'] → 完整 checkpoint  官方的预训练权重结果是['model']，下级才是真正的权重
+            # 看到 ['conv1.weight', 'bn1.running_mean'] → 纯 state_dict   我们自己训练并保存的权重是这种情况，所以89行的["model"]要删掉
+        else:
+            print("直接是 nn.Module 对象")
+
+        weights_dict = torch.load(args.weights, map_location=device)#["model"]
         # 删除有关分类类别的权重
         for k in list(weights_dict.keys()):
             if "head" in k:
@@ -102,23 +125,30 @@ def main(args):
         tb_writer.add_scalar(tags[3], val_acc, epoch)
         tb_writer.add_scalar(tags[4], optimizer.param_groups[0]["lr"], epoch)
 
+        run.log({"train/loss": train_loss, "train/accuracy": train_acc})
+        run.log({"val/loss": val_loss, "val/accuracy": val_acc})
+        run.log({"learning_rate": optimizer.param_groups[0]["lr"]})
+
         torch.save(model.state_dict(), "./weights/model-{}.pth".format(epoch))
+    run.finish()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_classes', type=int, default=5)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=2)
     parser.add_argument('--batch-size', type=int, default=8)
     parser.add_argument('--lr', type=float, default=0.0001)
 
     # 数据集所在根目录
     # https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz
     parser.add_argument('--data-path', type=str,
-                        default="/data/flower_photos")
+                        default="../../data_set/flower_data/flower_photos")
 
     # 预训练权重路径，如果不想载入就设置为空字符
-    parser.add_argument('--weights', type=str, default='./swin_tiny_patch4_window7_224.pth',
+    #parser.add_argument('--weights', type=str, default='./swin_tiny_patch4_window7_224.pth',
+    #                    help='initial weights path')
+    parser.add_argument('--weights', type=str, default='./weights/model-2.pth',
                         help='initial weights path')
     # 是否冻结权重
     parser.add_argument('--freeze-layers', type=bool, default=False)

@@ -10,9 +10,9 @@ from torchvision import transforms
 
 
 from my_dataset import MyDataSet
-from vit_model import vit_base_patch16_224_in21k as create_model
+from vit_model import vit_base_patch16_224 as create_model
 from utils import read_split_data, train_one_epoch, evaluate
-
+import json
 
 def main(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -61,17 +61,19 @@ def main(args):
                                              num_workers=nw,
                                              collate_fn=val_dataset.collate_fn)
 
-    model = create_model(num_classes=args.num_classes, has_logits=False).to(device)
+    #model = create_model(num_classes=args.num_classes, has_logits=False).to(device)
+    model = create_model(num_classes=args.num_classes).to(device)
 
     if args.weights != "":
         assert os.path.exists(args.weights), "weights file: '{}' not exist.".format(args.weights)
         weights_dict = torch.load(args.weights, map_location=device)
         # 删除不需要的权重
         del_keys = ['head.weight', 'head.bias'] if model.has_logits \
-            else ['pre_logits.fc.weight', 'pre_logits.fc.bias', 'head.weight', 'head.bias']
+            else ['head.weight', 'head.bias']
+            # else ['pre_logits.fc.weight', 'pre_logits.fc.bias', 'head.weight', 'head.bias']
         for k in del_keys:
             del weights_dict[k]
-        print(model.load_state_dict(weights_dict, strict=False))
+        print(model.load_state_dict(weights_dict, strict=False))  #打印缺少的权重和多出的权重
 
     if args.freeze_layers:
         for name, para in model.named_parameters():  #named_parameters是一个内置函数
@@ -86,6 +88,18 @@ def main(args):
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
     lf = lambda x: ((1 + math.cos(x * math.pi / args.epochs)) / 2) * (1 - args.lrf) + args.lrf  # cosine
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  #把学习率乘以lf
+
+    config = {
+        "lr": args.lr,
+        "batch_size": batch_size,
+        "epochs": args.epochs,
+        "model": "vit_base",
+        "optimizer": "SGD",
+        "notes": "尝试加config和文字信息"
+    }
+
+    # 写成易读的 JSON 格式
+    tb_writer.add_text("config", json.dumps(config, indent=2, ensure_ascii=False))  #加中文的话要 ensure_ascii=False
 
     for epoch in range(args.epochs):
         # train
@@ -116,7 +130,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_classes', type=int, default=5)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--batch-size', type=int, default=8)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lrf', type=float, default=0.01)
@@ -124,11 +138,11 @@ if __name__ == '__main__':
     # 数据集所在根目录
     # https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz
     parser.add_argument('--data-path', type=str,
-                        default="/data/flower_photos")
+                        default="../../data_set/flower_data/flower_photos")
     parser.add_argument('--model-name', default='', help='create model name')
 
     # 预训练权重路径，如果不想载入就设置为空字符
-    parser.add_argument('--weights', type=str, default='./vit_base_patch16_224_in21k.pth',
+    parser.add_argument('--weights', type=str, default='./vit_base_patch16_224.pth',
                         help='initial weights path')
     # 是否冻结权重
     parser.add_argument('--freeze-layers', type=bool, default=True)
