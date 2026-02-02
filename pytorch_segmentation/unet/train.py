@@ -62,9 +62,10 @@ def main(args):
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     batch_size = args.batch_size
     # segmentation nun_classes + background
-    num_classes = args.num_classes + 1
+    num_classes = args.num_classes + 1   #两个种类，前景和背景
 
     # using compute_mean_std.py
+    #这是训练集归一化之后，血管区域的，每个通道的，平均值。这一遭就是为了在74行加入transforms数据增强的时候用数据集的均值和方差而不是简单的0.5。
     mean = (0.709, 0.381, 0.224)
     std = (0.127, 0.079, 0.043)
 
@@ -103,12 +104,12 @@ def main(args):
         lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
     )
 
-    scaler = torch.cuda.amp.GradScaler() if args.amp else None
+    scaler = torch.cuda.amp.GradScaler() if args.amp else None  #混合精度相关
 
     # 创建学习率更新策略，这里是每个step更新一次(不是每个epoch)
     lr_scheduler = create_lr_scheduler(optimizer, len(train_loader), args.epochs, warmup=True)
 
-    if args.resume:
+    if args.resume:  #检查点不只包括权重，都包括了
         checkpoint = torch.load(args.resume, map_location='cpu')
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -117,7 +118,7 @@ def main(args):
         if args.amp:
             scaler.load_state_dict(checkpoint["scaler"])
 
-    best_dice = 0.
+    best_dice = 0.  #记录最小的指标
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         mean_loss, lr = train_one_epoch(model, optimizer, train_loader, device, epoch, num_classes,
@@ -142,7 +143,7 @@ def main(args):
             else:
                 continue
 
-        save_file = {"model": model.state_dict(),
+        save_file = {"model": model.state_dict(),   #保存权重时候保存一切
                      "optimizer": optimizer.state_dict(),
                      "lr_scheduler": lr_scheduler.state_dict(),
                      "epoch": epoch,
@@ -150,7 +151,7 @@ def main(args):
         if args.amp:
             save_file["scaler"] = scaler.state_dict()
 
-        if args.save_best is True:
+        if args.save_best is True:  #这里其实有点问题，没有判断dice是不是真的下降了，只是保存最后一个作为best权重
             torch.save(save_file, "save_weights/best_model.pth")
         else:
             torch.save(save_file, "save_weights/model_{}.pth".format(epoch))
@@ -195,7 +196,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    if not os.path.exists("./save_weights"):
+    if not os.path.exists("./save_weights"):   #用于保存我们训练出的权重
         os.mkdir("./save_weights")
 
     main(args)

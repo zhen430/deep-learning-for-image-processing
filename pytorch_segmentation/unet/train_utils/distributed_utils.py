@@ -139,9 +139,12 @@ class DiceCoefficient(object):
             self.count = torch.zeros(1, dtype=pred.dtype, device=pred.device)
         # compute the Dice score, ignoring background
         pred = F.one_hot(pred.argmax(dim=1), self.num_classes).permute(0, 3, 1, 2).float()
+        #模型输出(B, C, H, W)，3个通道取最大值(B, H, W)，one-hot编码(B, H, W, C类别)，permute(B, C类别, H, W)
         dice_target = build_target(target, self.num_classes, self.ignore_index)
+        #(B, H, W)，one-hot编码 + permute，变成(B, C类别, H, W)
         self.cumulative_dice += multiclass_dice_coeff(pred[:, 1:], dice_target[:, 1:], ignore_index=self.ignore_index)
-        self.count += 1
+        #跳过第一类背景0
+        self.count += 1  #记录step数
 
     @property
     def value(self):

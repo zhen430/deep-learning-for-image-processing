@@ -36,14 +36,14 @@ class Up(nn.Module):
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
 
-    def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-        x1 = self.up(x1)
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:  #x1尺寸小，通道多
+        x1 = self.up(x1)  #插值上采
         # [N, C, H, W]
-        diff_y = x2.size()[2] - x1.size()[2]
+        diff_y = x2.size()[2] - x1.size()[2]  #高宽的差距（由于卷积产生的一点点尺寸差距）
         diff_x = x2.size()[3] - x1.size()[3]
 
         # padding_left, padding_right, padding_top, padding_bottom
-        x1 = F.pad(x1, [diff_x // 2, diff_x - diff_x // 2,
+        x1 = F.pad(x1, [diff_x // 2, diff_x - diff_x // 2,   #填充，左右都填
                         diff_y // 2, diff_y - diff_y // 2])
 
         x = torch.cat([x2, x1], dim=1)
@@ -82,11 +82,11 @@ class UNet(nn.Module):
         self.out_conv = OutConv(base_c, num_classes)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        x1 = self.in_conv(x)
-        x2 = self.down1(x1)
+        x1 = self.in_conv(x)  #扩维，2个卷积层
+        x2 = self.down1(x1)   #池化下采+2个卷积扩维
         x3 = self.down2(x2)
         x4 = self.down3(x3)
-        x5 = self.down4(x4)
+        x5 = self.down4(x4)   #这里有一个特殊之处就是直接缩通道了，取决于bilinear。
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)

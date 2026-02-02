@@ -23,27 +23,27 @@ def dice_coeff(x: torch.Tensor, target: torch.Tensor, ignore_index: int = -100, 
     d = 0.
     batch_size = x.shape[0]
     for i in range(batch_size):
-        x_i = x[i].reshape(-1)
+        x_i = x[i].reshape(-1)  #取一张图，二维向量展平
         t_i = target[i].reshape(-1)
         if ignore_index >= 0:
             # 找出mask中不为ignore_index的区域
             roi_mask = torch.ne(t_i, ignore_index)
             x_i = x_i[roi_mask]
             t_i = t_i[roi_mask]
-        inter = torch.dot(x_i, t_i)
-        sets_sum = torch.sum(x_i) + torch.sum(t_i)
+        inter = torch.dot(x_i, t_i)  #分子，并集
+        sets_sum = torch.sum(x_i) + torch.sum(t_i)  #分母
         if sets_sum == 0:
             sets_sum = 2 * inter
 
-        d += (2 * inter + epsilon) / (sets_sum + epsilon)
+        d += (2 * inter + epsilon) / (sets_sum + epsilon)  #一个图的dice
 
-    return d / batch_size
+    return d / batch_size  #这一batch的dice
 
 
 def multiclass_dice_coeff(x: torch.Tensor, target: torch.Tensor, ignore_index: int = -100, epsilon=1e-6):
     """Average of Dice coefficient for all classes"""
     dice = 0.
-    for channel in range(x.shape[1]):
+    for channel in range(x.shape[1]):  #多类别时：对每个类别计算dice，求平均
         dice += dice_coeff(x[:, channel, ...], target[:, channel, ...], ignore_index, epsilon)
 
     return dice / x.shape[1]
@@ -52,5 +52,5 @@ def multiclass_dice_coeff(x: torch.Tensor, target: torch.Tensor, ignore_index: i
 def dice_loss(x: torch.Tensor, target: torch.Tensor, multiclass: bool = False, ignore_index: int = -100):
     # Dice loss (objective to minimize) between 0 and 1
     x = nn.functional.softmax(x, dim=1)
-    fn = multiclass_dice_coeff if multiclass else dice_coeff
-    return 1 - fn(x, target, ignore_index=ignore_index)
+    fn = multiclass_dice_coeff if multiclass else dice_coeff   #multiclass_dice_coeff实际上就是套了dice_coeff，二分类的话不用套这一层了
+    return 1 - fn(x, target, ignore_index=ignore_index)  #dice是指标，1-dice才是损失

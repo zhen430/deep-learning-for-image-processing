@@ -11,6 +11,7 @@ def criterion(inputs, target, loss_weight=None, num_classes: int = 2, dice: bool
         loss = nn.functional.cross_entropy(x, target, ignore_index=ignore_index, weight=loss_weight)
         if dice is True:
             dice_target = build_target(target, num_classes, ignore_index)
+            #(B, H, W)，one-hot编码 + permute，变成(B, C类别, H, W)
             loss += dice_loss(x, dice_target, multiclass=True, ignore_index=ignore_index)
         losses[name] = loss
 

@@ -4,7 +4,7 @@ import random
 import torch
 from torchvision import transforms as T
 from torchvision.transforms import functional as F
-
+#这是一个自行实现，相当于把库里的一部分相关代码拿出来
 
 def pad_if_smaller(img, size, fill=0):
     # 如果图像最小边长小于给定size，则用数值fill进行padding
